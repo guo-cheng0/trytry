@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>数独游戏</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --line: #cfd6e3;
+        --strong-line: #64748b;
+        --primary: #3b82f6;
+        --danger: #ef4444;
+        --ok: #16a34a;
+        --text: #0f172a;
+        --muted: #64748b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+        background: linear-gradient(135deg, #eef2ff, var(--bg));
+        color: var(--text);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+      }
+
+      .app {
+        width: min(760px, 100%);
+        background: var(--card);
+        border-radius: 16px;
+        box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+        padding: 20px;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(22px, 3.6vw, 32px);
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+
+      button, select {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text);
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+
+      .status {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        border: 2px solid var(--strong-line);
+        border-radius: 8px;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      .cell {
+        aspect-ratio: 1/1;
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+      }
+
+      .cell input {
+        width: 100%;
+        height: 100%;
+        border: none;
+        text-align: center;
+        font-size: clamp(20px, 2.8vw, 30px);
+        font-weight: 600;
+        color: var(--text);
+        outline: none;
+      }
+
+      .fixed input {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+
+      .wrong input {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .ok {
+        color: var(--ok);
+      }
+
+      .note {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .cell:nth-child(3n):not(:nth-child(9n)) {
+        border-right: 2px solid var(--strong-line);
+      }
+
+      .cell:nth-child(n+19):nth-child(-n+27),
+      .cell:nth-child(n+46):nth-child(-n+54) {
+        border-bottom: 2px solid var(--strong-line);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <h1>🧩 数独游戏</h1>
+      <div class="toolbar">
+        <label>
+          难度：
+          <select id="difficulty">
+            <option value="easy">简单</option>
+            <option value="medium" selected>中等</option>
+            <option value="hard">困难</option>
+          </select>
+        </label>
+        <button class="primary" id="newGameBtn">新游戏</button>
+        <button id="checkBtn">检查</button>
+        <button id="hintBtn">提示</button>
+        <button id="solveBtn">显示答案</button>
+        <span class="status" id="status">准备开始！</span>
+      </div>
+      <section id="grid" class="grid" aria-label="数独棋盘"></section>
+      <p class="note">规则：每行、每列、每个 3×3 宫都要包含 1~9 且不重复。</p>
+    </main>
+
+    <script>
+      const baseSolved = [
+        [5, 3, 4, 6, 7, 8, 9, 1, 2],
+        [6, 7, 2, 1, 9, 5, 3, 4, 8],
+        [1, 9, 8, 3, 4, 2, 5, 6, 7],
+        [8, 5, 9, 7, 6, 1, 4, 2, 3],
+        [4, 2, 6, 8, 5, 3, 7, 9, 1],
+        [7, 1, 3, 9, 2, 4, 8, 5, 6],
+        [9, 6, 1, 5, 3, 7, 2, 8, 4],
+        [2, 8, 7, 4, 1, 9, 6, 3, 5],
+        [3, 4, 5, 2, 8, 6, 1, 7, 9],
+      ];
+
+      const removeMap = { easy: 36, medium: 45, hard: 54 };
+
+      const gridEl = document.getElementById('grid');
+      const statusEl = document.getElementById('status');
+      const difficultyEl = document.getElementById('difficulty');
+      const newGameBtn = document.getElementById('newGameBtn');
+      const checkBtn = document.getElementById('checkBtn');
+      const hintBtn = document.getElementById('hintBtn');
+      const solveBtn = document.getElementById('solveBtn');
+
+      let solution = [];
+      let puzzle = [];
+
+      function copyBoard(board) {
+        return board.map((row) => [...row]);
+      }
+
+      function shuffle(array) {
+        const arr = [...array];
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function transformBoard(board) {
+        let b = copyBoard(board);
+
+        for (let g = 0; g < 3; g++) {
+          const rows = shuffle([0, 1, 2]);
+          const source = copyBoard(b);
+          for (let i = 0; i < 3; i++) {
+            b[g * 3 + i] = source[g * 3 + rows[i]];
+          }
+        }
+
+        const rowGroups = shuffle([0, 1, 2]);
+        b = rowGroups.flatMap((g) => b.slice(g * 3, g * 3 + 3));
+
+        b = b[0].map((_, col) => b.map((row) => row[col]));
+
+        for (let g = 0; g < 3; g++) {
+          const cols = shuffle([0, 1, 2]);
+          const source = copyBoard(b);
+          for (let i = 0; i < 3; i++) {
+            b[g * 3 + i] = source[g * 3 + cols[i]];
+          }
+        }
+
+        const colGroups = shuffle([0, 1, 2]);
+        b = colGroups.flatMap((g) => b.slice(g * 3, g * 3 + 3));
+
+        b = b[0].map((_, col) => b.map((row) => row[col]));
+
+        const digits = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        return b.map((row) => row.map((v) => digits[v - 1]));
+      }
+
+      function createPuzzle() {
+        solution = transformBoard(baseSolved);
+        puzzle = copyBoard(solution);
+        const removeCount = removeMap[difficultyEl.value];
+
+        let removed = 0;
+        while (removed < removeCount) {
+          const r = Math.floor(Math.random() * 9);
+          const c = Math.floor(Math.random() * 9);
+          if (puzzle[r][c] !== 0) {
+            puzzle[r][c] = 0;
+            removed++;
+          }
+        }
+      }
+
+      function render() {
+        gridEl.innerHTML = '';
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 9; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.maxLength = 1;
+            input.inputMode = 'numeric';
+            input.dataset.row = String(r);
+            input.dataset.col = String(c);
+
+            if (puzzle[r][c] !== 0) {
+              input.value = String(puzzle[r][c]);
+              input.disabled = true;
+              cell.classList.add('fixed');
+            }
+
+            input.addEventListener('input', (e) => {
+              const val = e.target.value.replace(/[^1-9]/g, '');
+              e.target.value = val;
+              cell.classList.remove('wrong');
+              updateStatus();
+            });
+
+            cell.appendChild(input);
+            gridEl.appendChild(cell);
+          }
+        }
+      }
+
+      function getCurrentBoard() {
+        const board = Array.from({ length: 9 }, () => Array(9).fill(0));
+        const inputs = gridEl.querySelectorAll('input');
+        inputs.forEach((input) => {
+          const r = Number(input.dataset.row);
+          const c = Number(input.dataset.col);
+          board[r][c] = Number(input.value) || 0;
+        });
+        return board;
+      }
+
+      function checkBoard(markWrong = true) {
+        const board = getCurrentBoard();
+        let complete = true;
+        let ok = true;
+
+        const inputs = gridEl.querySelectorAll('input');
+        inputs.forEach((input) => {
+          const r = Number(input.dataset.row);
+          const c = Number(input.dataset.col);
+          const val = Number(input.value);
+
+          const parent = input.parentElement;
+          parent.classList.remove('wrong');
+
+          if (!val) {
+            complete = false;
+            ok = false;
+            return;
+          }
+          if (val !== solution[r][c]) {
+            ok = false;
+            if (markWrong) parent.classList.add('wrong');
+          }
+        });
+
+        return { complete, ok };
+      }
+
+      function updateStatus() {
+        const { complete, ok } = checkBoard(false);
+        if (complete && ok) {
+          statusEl.textContent = '恭喜你，通关啦！';
+          statusEl.classList.add('ok');
+        } else {
+          statusEl.textContent = '继续加油～';
+          statusEl.classList.remove('ok');
+        }
+      }
+
+      newGameBtn.addEventListener('click', () => {
+        createPuzzle();
+        render();
+        statusEl.textContent = '新游戏已开始！';
+        statusEl.classList.remove('ok');
+      });
+
+      checkBtn.addEventListener('click', () => {
+        const { complete, ok } = checkBoard(true);
+        if (complete && ok) {
+          statusEl.textContent = '全部正确，太厉害了！';
+          statusEl.classList.add('ok');
+        } else {
+          statusEl.textContent = '有错误或未完成，红色格子需要调整。';
+          statusEl.classList.remove('ok');
+        }
+      });
+
+      hintBtn.addEventListener('click', () => {
+        const emptyInputs = Array.from(gridEl.querySelectorAll('input')).filter(
+          (input) => !input.disabled && !input.value
+        );
+        if (emptyInputs.length === 0) {
+          statusEl.textContent = '没有可提示的位置啦。';
+          return;
+        }
+        const pick = emptyInputs[Math.floor(Math.random() * emptyInputs.length)];
+        const r = Number(pick.dataset.row);
+        const c = Number(pick.dataset.col);
+        pick.value = String(solution[r][c]);
+        pick.parentElement.classList.remove('wrong');
+        updateStatus();
+      });
+
+      solveBtn.addEventListener('click', () => {
+        const inputs = gridEl.querySelectorAll('input');
+        inputs.forEach((input) => {
+          const r = Number(input.dataset.row);
+          const c = Number(input.dataset.col);
+          input.value = String(solution[r][c]);
+          input.parentElement.classList.remove('wrong');
+        });
+        statusEl.textContent = '已显示答案。';
+        statusEl.classList.remove('ok');
+      });
+
+      createPuzzle();
+      render();
+    </script>
+  </body>
+</html>

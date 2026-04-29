@@ -1,2 +1,12 @@
-# trytry
-Not sure where did all my previous projects hide.
+# Sudoku Web Game
+
+一个纯前端数独小游戏，打开 `index.html` 就能玩。
+
+## 功能
+- 三种难度：简单 / 中等 / 困难
+- 检查当前答案并高亮错误
+- 随机提示一个空格
+- 一键显示答案
+
+## 使用
+直接在浏览器中打开 `index.html`。
